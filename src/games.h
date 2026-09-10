@@ -48,12 +48,28 @@ enum { SCH_IDLE, SCH_LOADING, SCH_READY, SCH_ERROR };
 extern volatile int g_schedState;
 
 void games_init();
+void games_cache_load();   // restore the last-known slate + TV map (called by games_init)
+
+// Broadcast map, keyed by "AWY@HOM", persisted with the slate cache so networks
+// stay visible even when we can't poll the media feed.
+void        tv_set(const char* away, const char* home, const char* tv);
+const char* tv_get(const char* away, const char* home);
 
 // ---- play-by-play for the game currently open on the detail screen -------
 #define PBP_KEEP 8
 void pbp_focus(const char* gameId);                          // UI: now viewing
 void pbp_note(const char* gameId, const char* playId, const char* text);  // net
 int  pbp_get(char out[][160], int cap);                      // UI: newest first
+
+// UI marks which game the detail screen is on; the net task polls ESPN for its
+// live clock / play-by-play / situation only while a *live* game is focused.
+void detail_focus(int league, const char* gameId, bool live);
+bool detail_focus_get(int* league, char* gameId);           // net side
+bool games_find(int league, const char* id, Game* out);
+void games_patch_live(const char* id, uint8_t period, const char* clock,
+                      const char* detail, const char* downDist, int possSide,
+                      uint8_t toAway, uint8_t toHome, bool redZone,
+                      int awayScore, int homeScore);
 
 // ---- team schedule (on-demand, one request at a time) -------------------
 // UI: fire a request (sets state = LOADING) and read what team/league it wants.
@@ -74,12 +90,17 @@ int  games_snapshot(int league, Game* out, int cap);
 // Replace a league's stored games. Called from the network task.
 void games_publish(int league, const Game* src, int n);
 
+// Patch fresh games into a league's store by id (degraded-fallback path).
+void games_merge(int league, const Game* src, int n);
+
 // ---- shared status flags (display only; benign races are acceptable) -----
 extern volatile bool     g_wifiConnected;
 extern volatile bool     g_timeSynced;
 extern volatile bool     g_firstCycleDone;   // net task finished its first pass
 extern volatile bool     g_anyLive;          // any game in progress right now
 extern volatile bool     g_forceRefresh;     // UI asks the net task to poll now
+extern volatile int      g_uiLeague;         // league on screen (net polls this one)
+extern volatile bool     g_scoresOnScreen;   // UI is on the list or a game detail
 extern volatile bool     g_sleepReq;         // UI wants the net task quiet (sleeping)
 extern volatile int      g_httpStatus[2];    // last HTTP code per league
 extern volatile uint32_t g_lastUpdateMs[2];  // millis() of last good fetch

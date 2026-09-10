@@ -72,15 +72,23 @@ static void drawBrightnessRow(int r) {
 
 Screen scr_settings(const TouchEv& e) {
   bool changed = false;
+  static uint32_t s_restartArmed = 0;
 
   if (e.tap) {
     if (e.y >= ST_FOOT) {
       settings_save();
-      if (e.x < 120) { g_wantSleep = true; return SCR_SETTINGS; }
+      if (e.x < 80)       { g_wantSleep = true; return SCR_SETTINGS; }
+      if (e.x < 162)      return SCR_WIFI;
       return SCR_LIST;
     }
     int r = (e.y - ST_TOP) / ST_ROW;
-    if (e.y >= ST_TOP && r >= 0 && r < NROWS) {
+    if (e.y >= ST_TOP && r == 8) {                       // Recalibrate | Restart row
+      if (e.x < 120) { g_wantRecal = true; s_restartArmed = 0; }
+      else if (s_restartArmed && millis() - s_restartArmed < 4000) {
+        settings_save(); delay(60); ESP.restart();
+      } else s_restartArmed = millis();
+    } else if (e.y >= ST_TOP && r >= 0 && r < NROWS) {
+      s_restartArmed = 0;
       // brightness has -/+ zones; every other row cycles forward on any tap
       switch (r) {
         case 0:
@@ -95,7 +103,6 @@ Screen scr_settings(const TouchEv& e) {
         case 5: g_set.cfbTodayOnly = !g_set.cfbTodayOnly; g_forceRefresh = true; changed = true; break;
         case 6: g_set.scoreAlerts = !g_set.scoreAlerts; changed = true; break;
         case 7: cycle8(&g_set.sleepMin, SLEEP_PRESETS, 5, +1); changed = true; break;
-        case 8: g_wantRecal = true; break;
       }
       if (changed) settings_save();
     }
@@ -132,16 +139,29 @@ Screen scr_settings(const TouchEv& e) {
   drawValRow(5, "NCAAF today",    g_set.cfbTodayOnly ? "ON" : "OFF", false);
   drawValRow(6, "Score alerts",  g_set.scoreAlerts ? "ON" : "OFF", false);
   drawValRow(7, "Auto-sleep",    slp, false);
-  drawValRow(8, "Recalibrate touch", nullptr, true);
+  {                                                    // row 8: two buttons
+    int y = ST_TOP + 8 * ST_ROW, my = y + ST_ROW / 2;
+    canvas.fillRect(0, y, 240, ST_ROW - 1, C_PANEL2);
+    canvas.drawFastVLine(120, y + 4, ST_ROW - 9, C_PANEL);
+    canvas.setFont(&fonts::FreeSansBold9pt7b);
+    canvas.setTextDatum(textdatum_t::middle_center);
+    canvas.setTextColor(C_ACCENT);
+    canvas.drawString("Recalibrate", 60, my);
+    bool armed = s_restartArmed && millis() - s_restartArmed < 4000;
+    canvas.setTextColor(armed ? C_LIVE : C_ACCENT);
+    canvas.drawString(armed ? "Confirm?" : "Restart", 180, my);
+  }
 
   canvas.fillRect(0, ST_FOOT, 240, 24, C_PANEL2);
-  canvas.setFont(&fonts::FreeSansBold9pt7b);
+  canvas.setFont(&fonts::Font2);
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setTextColor(C_DIM);
-  canvas.drawString("SLEEP", 60, ST_FOOT + 12);
+  canvas.drawString("SLEEP", 40, ST_FOOT + 12);
+  canvas.drawString("WI-FI", 121, ST_FOOT + 12);
   canvas.setTextColor(C_ACCENT);
-  canvas.drawString("DONE", 180, ST_FOOT + 12);
-  canvas.drawFastVLine(120, ST_FOOT + 4, 16, C_PANEL);
+  canvas.drawString("DONE", 202, ST_FOOT + 12);
+  canvas.drawFastVLine(80, ST_FOOT + 4, 16, C_PANEL);
+  canvas.drawFastVLine(162, ST_FOOT + 4, 16, C_PANEL);
 
   canvas.pushSprite(0, 0);
   return SCR_SETTINGS;

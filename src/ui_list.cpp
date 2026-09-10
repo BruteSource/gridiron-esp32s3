@@ -29,6 +29,24 @@ void periodLabel(char* b, size_t n, int p) {
   else snprintf(b, n, "%dOT", p - 4);
 }
 
+bool breakLabel(char* b, size_t n, int period, const char* detail, const char* clock) {
+  if (detail && *detail) {
+    if (strstr(detail, "Halftime")) { strlcpy(b, "Halftime", n); return true; }
+    if (!strncmp(detail, "End of", 6)) {
+      if (strstr(detail, "Regulation")) { strlcpy(b, "End of Reg.", n); return true; }
+      strlcpy(b, detail, n);                       // "End of 1st Quarter" -> "End of 1st"
+      char* q = strstr(b, " Quarter"); if (q) *q = 0;
+      return true;
+    }
+  }
+  if (clock && !strcmp(clock, "0:00")) {           // clock ran out, ESPN detail lagging
+    if (period == 2) { strlcpy(b, "Halftime",   n); return true; }
+    if (period == 1) { strlcpy(b, "End of 1st", n); return true; }
+    if (period == 3) { strlcpy(b, "End of 3rd", n); return true; }
+  }
+  return false;
+}
+
 void kickShort(char* b, size_t n, time_t k) {
   if (!k) { strlcpy(b, "--", n); return; }
   struct tm lt; localtime_r(&k, &lt);
@@ -149,10 +167,15 @@ static void drawRow(int i, int y) {
   canvas.setTextDatum(textdatum_t::middle_center);
   canvas.setFont(&fonts::Font2);
   if (g.state == 1) {
-    char q[8]; periodLabel(q, sizeof(q), g.period);
+    char brk[24];
     canvas.setTextColor(C_LIVE);
-    canvas.drawString(q, 196, y + ROW_H / 2 - 9);
-    canvas.drawString(g.clock[0] ? g.clock : "--", 196, y + ROW_H / 2 + 9);
+    if (breakLabel(brk, sizeof(brk), g.period, g.detail, g.clock)) {
+      canvas.drawString(brk, 196, y + ROW_H / 2);
+    } else {
+      char q[8]; periodLabel(q, sizeof(q), g.period);
+      canvas.drawString(q, 196, y + ROW_H / 2 - 9);
+      canvas.drawString(g.clock[0] ? g.clock : "LIVE", 196, y + ROW_H / 2 + 9);
+    }
   } else if (g.state == 2) {
     canvas.setTextColor(C_DIM);
     canvas.drawString(g.period > 4 ? "Final/OT" : "Final", 196, y + ROW_H / 2);
@@ -171,13 +194,19 @@ static void drawFooter(int maxScroll) {
   canvas.fillTriangle(16, FOOT_Y + 16, 32, FOOT_Y + 16, 24, FOOT_Y + 7, up);
   canvas.fillTriangle(208, FOOT_Y + 7, 224, FOOT_Y + 7, 216, FOOT_Y + 16, dn);
 
-  char b[20];
-  int shown = s_n ? min(VIS, s_n - s_scroll) : 0;
-  snprintf(b, sizeof(b), "%d-%d / %d", s_n ? s_scroll + 1 : 0, s_scroll + shown, s_n);
   canvas.setFont(&fonts::Font2);
-  canvas.setTextColor(C_DIM);
   canvas.setTextDatum(textdatum_t::middle_center);
-  canvas.drawString(b, 120, FOOT_Y + FOOT_H / 2);
+  // no fresh fetch this session but we have cached games -> flag it, tap to retry
+  if (s_n > 0 && g_lastUpdateMs[g_league] == 0) {
+    canvas.setTextColor(C_WARN);
+    canvas.drawString("last saved - tap to retry", 120, FOOT_Y + FOOT_H / 2);
+  } else {
+    char b[20];
+    int shown = s_n ? min(VIS, s_n - s_scroll) : 0;
+    snprintf(b, sizeof(b), "%d-%d / %d", s_n ? s_scroll + 1 : 0, s_scroll + shown, s_n);
+    canvas.setTextColor(C_DIM);
+    canvas.drawString(b, 120, FOOT_Y + FOOT_H / 2);
+  }
 }
 
 // ---- entry -------------------------------------------------------------
@@ -197,10 +226,14 @@ Screen scr_list(const TouchEv& e) {
       if (e.x >= 206) return SCR_SETTINGS;
       if (e.x >= 172) { news_request(g_league); return SCR_NEWS; }
       int want = (e.x < 48) ? 0 : (e.x < 120 ? 1 : g_league);
-      if (want != g_league) { g_league = want; s_scroll = 0; s_dragPix = 0; }
+      if (want != g_league) {
+        g_league = want; g_uiLeague = want; g_forceRefresh = true;
+        s_scroll = 0; s_dragPix = 0;
+      }
     } else if (e.y >= FOOT_Y) {
       if (e.x < 80)       { if (s_scroll > 0) s_scroll--; }
       else if (e.x > 160) { if (s_scroll < maxScroll) s_scroll++; }
+      else               g_forceRefresh = true;        // tap centre = refresh now
     } else {
       int idx = s_scroll + (e.y - HDR_H) / ROW_H;
       if (idx >= 0 && idx < s_n) {
@@ -220,9 +253,18 @@ Screen scr_list(const TouchEv& e) {
     canvas.setFont(&fonts::Font2);
     canvas.setTextColor(C_DIM);
     canvas.setTextDatum(textdatum_t::middle_center);
-    const char* msg = !g_wifiConnected ? g_bootMsg
+    int st = g_httpStatus[g_league];
+    bool triedAndFailed = g_lastUpdateMs[g_league] == 0 && st != 0;
+    const char* msg = !g_wifiConnected      ? g_bootMsg
+                    : (st == 403 || st == 429) ? "Data source rate-limited this IP"
+                    : triedAndFailed        ? "Can't reach data source - retrying"
+                    : !g_firstCycleDone     ? "Loading scores..."
                     : (g_league ? "No ranked NCAAF games" : "No NFL games today");
     canvas.drawString(msg, 120, 160);
+    if (st == 403 || st == 429) {
+      canvas.setTextColor(C_DIM);
+      canvas.drawString("usually clears within a day", 120, 180);
+    }
   } else {
     for (int r = 0; r < VIS && s_scroll + r < s_n; r++)
       drawRow(s_scroll + r, HDR_H + r * ROW_H);

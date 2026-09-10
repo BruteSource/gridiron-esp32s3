@@ -5,7 +5,7 @@
 
 Settings g_set;
 
-const uint32_t LIVE_PRESETS[4] = {10000UL, 20000UL, 30000UL, 60000UL};
+const uint32_t LIVE_PRESETS[4] = {20000UL, 30000UL, 60000UL, 120000UL};
 const uint32_t IDLE_PRESETS[3] = {60000UL, 300000UL, 900000UL};
 const uint8_t  SLEEP_PRESETS[5] = {0, 5, 15, 30, 60};
 
@@ -42,6 +42,7 @@ void settings_load() {
   }
 
   if (g_set.brightness < 10) g_set.brightness = 10;
+  if (g_set.liveMs < 20000UL) g_set.liveMs = 20000UL;   // keep the API load sane
   if (g_set.bootLeague > 1)  g_set.bootLeague = 0;
   if (g_set.theme >= THEME_COUNT) g_set.theme = 0;
   theme_set(g_set.theme);

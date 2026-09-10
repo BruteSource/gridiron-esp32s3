@@ -2,6 +2,7 @@
 #include "display.h"
 #include "settings.h"
 #include "anim.h"
+#include "stats.h"
 #include <time.h>
 
 int  g_detailSel = 0;
@@ -76,19 +77,29 @@ static void drawLiveBody(const Game& g) {
   liveRow(50, g.homeName, g.home, g.homeRank, g.homeScore, g.homeColor, hPoss);
   canvas.drawFastHLine(0, 68, 240, C_PANEL);
 
-  char q[8]; periodLabel(q, sizeof(q), g.period);
-  char cl[24]; snprintf(cl, sizeof(cl), "%s  %s", q, g.clock[0] ? g.clock : "--");
+  char cl[24];
+  if (!breakLabel(cl, sizeof(cl), g.period, g.detail, g.clock)) {
+    char q[8]; periodLabel(q, sizeof(q), g.period);
+    if (g.clock[0]) snprintf(cl, sizeof(cl), "%s  %s", q, g.clock);
+    else            snprintf(cl, sizeof(cl), "%s  LIVE", q);   // CFBD: no clock
+  }
   canvas.setFont(&fonts::FreeSansBold12pt7b);
   canvas.setTextColor(C_LIVE);
   canvas.setTextDatum(textdatum_t::middle_left);
   canvas.drawString(cl, 10, 83);
   if (g.redZone) {
-    canvas.fillRect(158, 75, 74, 16, C_LIVE);
+    canvas.fillRect(120, 75, 62, 16, C_LIVE);
     canvas.setFont(&fonts::Font2);
     canvas.setTextColor(C_TEXT);
     canvas.setTextDatum(textdatum_t::middle_center);
-    canvas.drawString("RED ZONE", 195, 83);
+    canvas.drawString("RED ZONE", 151, 83);
   }
+  // STATS button (tap zone handled in scr_detail)
+  canvas.fillRoundRect(186, 73, 48, 20, 4, C_PANEL2);
+  canvas.setFont(&fonts::Font2);
+  canvas.setTextColor(C_ACCENT);
+  canvas.setTextDatum(textdatum_t::middle_center);
+  canvas.drawString("STATS", 210, 83);
 
   int y = 102;
   canvas.setTextDatum(textdatum_t::middle_left);
@@ -180,21 +191,27 @@ Screen scr_detail(const TouchEv& e) {
       else                { return SCR_LIST; }
       g_detailSel = idx;
       strlcpy(g_detailId, s_dl[idx].id, sizeof(g_detailId));
+    } else if (live && e.y >= 70 && e.y < 98 && e.x >= 176) {
+      stats_request(gt.league, gt.id);
+      return SCR_STATS;
     } else if (e.y >= aY0 && e.y < aY1 && gt.awayId[0]) {
       schedule_request(gt.league, gt.awayId, gt.awayName);
       return SCR_SCHEDULE;
     } else if (e.y >= hY0 && e.y < hY1 && gt.homeId[0]) {
       schedule_request(gt.league, gt.homeId, gt.homeName);
       return SCR_SCHEDULE;
+    } else if (!live && gt.state == 2 && e.y >= 200 && e.y < 256) {
+      stats_request(gt.league, gt.id);    // final: tap the score band for the box score
+      return SCR_STATS;
     } else if (!live && e.y >= 200 && e.y < 256) {
-      demo = true;                        // tap score band to preview an animation
+      demo = true;                        // pre-game: tap score band to preview an animation
     } else if (!live) {
       return SCR_LIST;
     }
   }
 
   const Game& g = s_dl[idx];
-  pbp_focus(g.id);
+  detail_focus(g.league, g.id, g.state == 1);
 
   int animSide = -1, animPts = 0;
   bool sameGame = !strcmp(g.id, s_prevId);
@@ -242,8 +259,9 @@ Screen scr_detail(const TouchEv& e) {
       canvas.drawString(kb, 120, 220);
     }
     canvas.setFont(&fonts::Font2);
-    canvas.setTextColor(C_DIM);
-    canvas.drawString("tap to demo score alert", 120, 242);
+    canvas.setTextColor(g.state == 2 ? C_ACCENT : C_DIM);
+    canvas.drawString(g.state == 2 ? "tap for box score & player stats"
+                                   : "tap to demo score alert", 120, 242);
 
     canvas.setTextDatum(textdatum_t::top_left);
     int iy = 258;

@@ -10,6 +10,8 @@
 #include "settings.h"
 #include "battery.h"
 #include "news.h"
+#include "stats.h"
+#include "wifi_cfg.h"
 
 #define WAKE_BTN_PIN   0      // BOOT button, active low
 
@@ -67,14 +69,17 @@ void setup() {
   while (!Serial && millis() - t < 1200) delay(10);   // bounded — see board doc 4.2
 
   esp_sleep_wakeup_cause_t wc = esp_sleep_get_wakeup_cause();
-  Serial.printf("\n[boot] Gridiron score tracker (wake cause %d)\n", (int)wc);
+  Serial.printf("\n[boot] The Game Box (wake cause %d)\n", (int)wc);
   Serial.printf("[boot] PSRAM: %u bytes free\n", (unsigned)ESP.getFreePsram());
 
   settings_load();
+  wifi_cfg_load();
   g_league = g_set.bootLeague;
+  g_uiLeague = g_league;
 
   games_init();
   news_init();
+  stats_init();
   battery_init();
   display_init();                 // kills the RGB LED, applies g_set.brightness
   touch_init();
@@ -92,6 +97,8 @@ void setup() {
     if (!touch_isCalibrated() || held) display_calibrate();
     scr_boot_draw();
   }
+
+  if (!wifi_cfg_have()) s_screen = SCR_WIFI;   // no credentials yet -> run the wizard
 
   s_lastTouch = millis();
   net_start();
@@ -115,6 +122,7 @@ void loop() {
   if (s_screen == SCR_BOOT) {
     if (g_firstCycleDone) {
       s_screen = SCR_LIST;
+      g_scoresOnScreen = true;
     } else {
       if (now - s_lastDraw > 180) { scr_boot_draw(); s_lastDraw = now; }
       delay(15);
@@ -124,6 +132,7 @@ void loop() {
 
   bool active = e.tap || e.dragging;
   if (active || now - s_lastDraw > 500) {
+    Screen prev = s_screen;
     switch (s_screen) {
       case SCR_LIST:     s_screen = scr_list(e);     break;
       case SCR_DETAIL:   s_screen = scr_detail(e);   break;
@@ -131,9 +140,19 @@ void loop() {
       case SCR_SETTINGS: s_screen = scr_settings(e); break;
       case SCR_NEWS:     s_screen = scr_news(e);     break;
       case SCR_NEWSITEM: s_screen = scr_newsitem(e); break;
+      case SCR_STATS:    s_screen = scr_stats(e);    break;
+      case SCR_WIFI:     s_screen = scr_wifi(e);     break;
+      case SCR_WIFIKEY:  s_screen = scr_wifikey(e);  break;
       default: break;
     }
     s_lastDraw = now;
+
+    // The net task only polls scores while the list or a game detail is up.
+    // Coming back to either from elsewhere triggers an immediate pull.
+    bool wasScores = (prev == SCR_LIST || prev == SCR_DETAIL);
+    bool nowScores = (s_screen == SCR_LIST || s_screen == SCR_DETAIL);
+    g_scoresOnScreen = nowScores;
+    if (nowScores && !wasScores) g_forceRefresh = true;
   }
 
   if (g_wantRecal) {

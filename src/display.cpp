@@ -29,7 +29,7 @@ void display_init() {
 #endif
 
   lcd.init();
-  lcd.setRotation(0);          // portrait, USB down
+  lcd.setRotation(SCREEN_ROTATION);   // 0 = USB up, 2 = USB down (see config.h)
   lcd.fillScreen(C_BG);
   lcd.setBrightness(g_set.brightness);
 
@@ -43,26 +43,66 @@ void display_init() {
 }
 
 void scr_boot_draw() {
-  canvas.fillScreen(C_BG);
+  // Fixed lime palette (independent of the selected theme — matches the case).
+  const uint16_t BG    = 0x0040;   // near-black green
+  const uint16_t LIME  = 0xB7E5;   // bright lime
+  const uint16_t MID   = 0x6E03;   // mid lime
+  const uint16_t DARK  = 0x3B22;   // deep lime
+  const uint16_t DIM   = 0x6CE7;   // muted lime
+  const uint16_t PIG   = 0x7A44;   // football brown
+  const uint16_t INK   = 0xEFFB;   // off-white
+
+  canvas.fillScreen(BG);
   canvas.setTextDatum(textdatum_t::middle_center);
 
-  canvas.setFont(&fonts::FreeSansBold18pt7b);
-  canvas.setTextColor(C_ACCENT);
-  canvas.drawString("GRIDIRON", 120, 118);
+  // ---- isometric "box" logo with a football on the front face ----
+  const int fx = 79, fy = 48, fw = 82, fh = 60;   // front face
+  const int dx = 21, dy = -14;                     // depth vector
+  // right face
+  canvas.fillTriangle(fx + fw, fy, fx + fw + dx, fy + dy, fx + fw + dx, fy + fh + dy, DARK);
+  canvas.fillTriangle(fx + fw, fy, fx + fw + dx, fy + fh + dy, fx + fw, fy + fh, DARK);
+  // top face
+  canvas.fillTriangle(fx, fy, fx + dx, fy + dy, fx + fw + dx, fy + dy, LIME);
+  canvas.fillTriangle(fx, fy, fx + fw + dx, fy + dy, fx + fw, fy, LIME);
+  // front face
+  canvas.fillRect(fx, fy, fw, fh, MID);
+  // outline
+  canvas.drawRect(fx, fy, fw, fh, BG);
+  canvas.drawLine(fx, fy, fx + dx, fy + dy, BG);
+  canvas.drawLine(fx + fw, fy, fx + fw + dx, fy + dy, BG);
+  canvas.drawLine(fx + dx, fy + dy, fx + fw + dx, fy + dy, BG);
+  canvas.drawLine(fx + fw + dx, fy + dy, fx + fw + dx, fy + fh + dy, BG);
+  canvas.drawLine(fx + fw, fy + fh, fx + fw + dx, fy + fh + dy, BG);
+  // football
+  int bx = fx + fw / 2, by = fy + fh / 2 + 1;
+  canvas.fillEllipse(bx, by, 19, 12, PIG);
+  canvas.drawEllipse(bx, by, 19, 12, INK);
+  canvas.drawFastHLine(bx - 9, by, 18, INK);
+  for (int i = -6; i <= 6; i += 4) canvas.drawFastVLine(bx + i, by - 3, 7, INK);
 
+  // ---- wordmark ----
+  canvas.setFont(&fonts::FreeSansBold12pt7b);
+  canvas.setTextColor(LIME);
+  canvas.drawString("THE GAME BOX", 120, 148);
   canvas.setFont(&fonts::Font2);
-  canvas.setTextColor(C_DIM);
-  canvas.drawString("live score tracker", 120, 150);
+  canvas.setTextColor(DIM);
+  canvas.drawString("live football scoreboard", 120, 170);
 
+  // ---- status ----
   uint32_t phase = (millis() / 350) % 4;
   char dots[4] = {0};
   for (uint32_t i = 0; i < phase; i++) dots[i] = '.';
-  canvas.setTextColor(C_TEXT);
-  canvas.drawString(g_bootMsg, 120, 206);
-  canvas.drawString(dots, 120, 228);
+  canvas.setTextColor(INK);
+  canvas.drawString(g_bootMsg, 120, 202);
+  canvas.setTextColor(LIME);
+  canvas.drawString(dots, 120, 220);
 
-  canvas.setTextColor(C_DIM);
-  canvas.drawString("hold screen to calibrate touch", 120, 300);
+  // ---- credits ----
+  canvas.setTextColor(INK);
+  canvas.drawString("Vibecoded with Claude by BruteSource", 120, 262);
+  canvas.setTextColor(DIM);
+  canvas.drawString("github.com/BruteSource/gridiron-esp32s3", 120, 278);
+  canvas.drawString("hold screen to calibrate touch", 120, 302);
 
   canvas.pushSprite(0, 0);
 }

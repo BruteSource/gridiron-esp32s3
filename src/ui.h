@@ -17,7 +17,7 @@
 
 enum Screen {
   SCR_BOOT, SCR_LIST, SCR_DETAIL, SCR_SCHEDULE, SCR_SETTINGS,
-  SCR_NEWS, SCR_NEWSITEM
+  SCR_NEWS, SCR_NEWSITEM, SCR_STATS, SCR_WIFI, SCR_WIFIKEY
 };
 
 // One poll of the touch panel, reduced to a gesture.

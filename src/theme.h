@@ -7,7 +7,7 @@ struct Theme {
   const char* name;
 };
 
-#define THEME_COUNT 7
+#define THEME_COUNT 8
 extern const Theme THEMES[THEME_COUNT];
 extern Theme g_th;               // the active theme
 

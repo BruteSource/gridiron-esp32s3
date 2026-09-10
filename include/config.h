@@ -13,7 +13,11 @@
 // Poll intervals (milliseconds)
 #define POLL_LIVE_MS   20000UL     // when a game is in progress
 #define POLL_IDLE_MS   300000UL    // when nothing is live
-#define POLL_RETRY_MS  15000UL     // after a failed fetch
+#define POLL_RETRY_MS  15000UL     // after a failed fetch (backs off further on a streak)
+
+// Only the league on screen is polled every cycle; the other is refreshed at
+// most this often so switching tabs isn't empty.
+#define POLL_OTHER_MS  300000UL
 
 // Optional: force a specific slate for testing, e.g. "20250906" (YYYYMMDD).
 // Leave "" to use today's games.
@@ -21,6 +25,10 @@
 
 // Screen brightness 0-255
 #define BACKLIGHT_LEVEL 220
+
+// Panel orientation. 0 = USB port at the top, 2 = USB port at the bottom
+// (180 deg flip). Changing this forces a touch recalibration on the next boot.
+#define SCREEN_ROTATION 2
 
 // On-board WS2812 RGB LED (GPIO 42). Held off to save power; set to 1 to allow
 // using it later.
@@ -33,9 +41,10 @@
 #define BAT_DIVIDER     1.955f   // calibrated: meter 3.50 V vs pin ~1.79 V on this unit
 #define BAT_CAL_OFFSET  0.0f
 
-// Capacity limits (RAM cost ~200 bytes/game)
+// Capacity limits (RAM cost ~200 bytes/game). College is filtered to games
+// with a ranked team, so it never needs many.
 #define MAX_NFL 24
-#define MAX_CFB 64
+#define MAX_CFB 40
 
 // ESPN public scoreboard endpoints (no API key required)
 #define NFL_URL "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"

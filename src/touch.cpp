@@ -1,4 +1,5 @@
 #include "touch.h"
+#include "config.h"
 #include <Wire.h>
 #include <Preferences.h>
 
@@ -58,7 +59,8 @@ void touch_init() {
 
   Preferences p;
   if (p.begin("grid_touch", true)) {
-    if (p.isKey("xmn")) {
+    // ignore a stored calibration taken at a different panel rotation
+    if (p.isKey("xmn") && p.getInt("rot", 0) == SCREEN_ROTATION) {
       s_cal.xMin = p.getInt("xmn", s_cal.xMin);
       s_cal.xMax = p.getInt("xmx", s_cal.xMax);
       s_cal.yMin = p.getInt("ymn", s_cal.yMin);
@@ -83,6 +85,7 @@ void touch_setCal(const TouchCal& c, bool persist) {
     if (p.begin("grid_touch", false)) {
       p.putInt("xmn", c.xMin); p.putInt("xmx", c.xMax);
       p.putInt("ymn", c.yMin); p.putInt("ymx", c.yMax);
+      p.putInt("rot", SCREEN_ROTATION);
       p.end();
     }
   }
@@ -93,9 +96,10 @@ static bool readPoint(int* sx, int* sy) {
   if (!ftRaw(&rx, &ry)) return false;
   long x = map(rx, s_cal.xMin, s_cal.xMax, 0, 240);
   long y = map(ry, s_cal.yMin, s_cal.yMax, 0, 320);
-  // Near the top edge the finger's contact patch reads a few px lower than the
-  // aim point, so header buttons get missed — lift taps in the top strip.
-  if (y < 48) y -= (48 - y) / 4;                      // up to ~12 px at y=0
+  // Near an edge the finger's contact patch pulls toward screen centre, so
+  // edge buttons get missed — nudge taps in the top/bottom strips outward.
+  if (y < 48)        y -= (48 - y) / 4;               // up to ~12 px at y=0
+  else if (y > 271)  y += (y - 271) / 4;              // up to ~12 px at y=319
   *sx = constrain(x, 0, 239);
   *sy = constrain(y, 0, 319);
   return true;
