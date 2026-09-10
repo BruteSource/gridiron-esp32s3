@@ -1,0 +1,5 @@
+.pio/
+.vscode/
+.claude/
+dist/
+include/credentials.h
